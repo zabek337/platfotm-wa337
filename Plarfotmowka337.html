@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>Platformówka337</title>
+<style>
+body, html {margin:0;padding:0;width:100%;height:100%;overflow:hidden;font-family:'Trebuchet MS',sans-serif;background:#000;}
+canvas {display:block;}
+#levelSelect {position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;color:white;background: rgba(0,0,0,0.8);}
+#levelSelect h2 {margin-bottom:30px;font-size:48px;font-weight:bold;color:#ff5555;text-shadow:3px 3px 0 #000;}
+#levelButtons{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;}
+button {padding:10px 20px;font-size:18px;margin:5px;border:none;border-radius:10px;cursor:pointer;background:#ff5555;color:white;transition:0.2s;}
+button:hover:not(.disabled){background:#ff7777;transform:scale(1.05);}
+button.disabled{opacity:0.4;cursor:not-allowed;}
+#score,#coins,#level,#lives,#time {position:absolute;top:5px;font-size:20px;color:#fff;text-shadow:1px 1px 2px black;}
+#score{left:10px;} #coins{left:140px;} #level{left:270px;} #lives{left:400px;} #time{left:530px;}
+#toggleShop,#chooseSkinBtn,#settingsBtn,#statsBtn,#backButton{position:absolute;padding:8px 15px;font-size:16px;}
+#toggleShop{top:50px;left:10px;} #chooseSkinBtn{top:50px;left:160px;} #settingsBtn{top:50px;left:310px;} #statsBtn{top:50px;left:460px;} #backButton{bottom:10px;right:10px;display:none;}
+#skinShopWrapper,#chooseSkinWrapper,#settingsWrapper,#statsWrapper{display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:white;text-align:center;background:rgba(0,0,0,0.85);padding:20px;border-radius:10px;min-width:400px;}
+.skinPreview{display:inline-block;width:50px;height:50px;margin:5px;border:2px solid #fff;cursor:pointer;}
+.skinPrice{color:white;margin-top:5px;font-size:16px;}
+#skinPreviewHUD{position:absolute;bottom:10px;left:10px;width:40px;height:50px;border:2px solid #fff;}
+#touchControls {position:absolute;width:100%;height:100%;pointer-events:none;display:none;}
+#leftBtn, #rightBtn, #jumpBtn {position:absolute; bottom:20px; width:80px; height:80px; font-size:30px; border-radius:10px; background:#ff5555; color:white; pointer-events:auto;}
+#leftBtn {left:20px;} #rightBtn {left:110px;} #jumpBtn {right:20px;}
+</style>
+</head>
+<body>
+
+<div id="levelSelect">
+  <h2>Platformówka337</h2>
+  <div id="levelButtons"></div>
+</div>
+
+<button id="toggleShop">Sklep</button>
+<button id="chooseSkinBtn">Wybierz skin</button>
+<button id="settingsBtn">Ustawienia</button>
+<button id="statsBtn">Statystyki</button>
+<button id="backButton">Wróć</button>
+
+<div id="skinShopWrapper"></div>
+<div id="chooseSkinWrapper"><h3>Wybierz skin</h3><div id="ownedSkins"></div></div>
+<div id="settingsWrapper">
+  <h3>Ustawienia</h3>
+  <div id="settingsContent">
+    <p>Wybór sterowania:</p>
+    <p>
+      <label><input type="radio" name="controlType" value="computer" checked> Komputer</label>
+      <label><input type="radio" name="controlType" value="phone"> Telefon</label>
+    </p>
+    <p><label><input type="checkbox" id="enableTouchBtn"> Włącz przyciski dotykowe</label></p>
+    <p><button id="resetStatsBtn">Resetuj statystyki</button></p>
+  </div>
+</div>
+<div id="statsWrapper"><h3>Statystyki</h3><div id="statsContent"></div></div>
+
+<div id="score">Punkty: 0</div>
+<div id="coins">Coins: 0</div>
+<div id="level">Level: 1</div>
+<div id="lives">Życia: 0</div>
+<div id="time">Czas: 0s</div>
+<div id="skinPreviewHUD"></div>
+
+<div id="touchControls">
+  <button id="leftBtn">◀</button>
+  <button id="rightBtn">▶</button>
+  <button id="jumpBtn">⬆</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+const canvas=document.getElementById('gameCanvas'); 
+const ctx=canvas.getContext('2d');
+canvas.width=window.innerWidth; canvas.height=window.innerHeight;
+
+// DOM
+const levelSelect=document.getElementById('levelSelect');
+const levelButtonsDiv=document.getElementById('levelButtons');
+const toggleShopBtn=document.getElementById('toggleShop');
+const chooseSkinBtn=document.getElementById('chooseSkinBtn');
+const settingsBtn=document.getElementById('settingsBtn');
+const statsBtn=document.getElementById('statsBtn');
+const skinShopWrapper=document.getElementById('skinShopWrapper');
+const chooseSkinWrapper=document.getElementById('chooseSkinWrapper');
+const settingsWrapper=document.getElementById('settingsWrapper');
+const statsWrapper=document.getElementById('statsWrapper');
+const ownedSkinsDiv=document.getElementById('ownedSkins');
+const backButton=document.getElementById('backButton');
+const statsContent=document.getElementById('statsContent');
+const skinPreviewHUD=document.getElementById('skinPreviewHUD');
+const touchControls=document.getElementById('touchControls');
+const enableTouchBtn=document.getElementById('enableTouchBtn');
+
+// Game variables
+const baseWidth=800; const baseHeight=400;
+let score=0, lives=0, currentLevel=1, maxUnlockedLevel=1, startTime=Date.now();
+let player={x:50,y:baseHeight-50,width:25,height:25,dx:0,dy:0,onGround:false,anim:0,spawnX:50,spawnY:baseHeight-50};
+const keys={left:false,right:false,up:false};
+const gravity=0.6,speed=5,jumpPower=-16;
+const MAX_LIVES=5;
+let gameStarted=false;
+let controlType="computer";
+
+// Skórki
+const availableSkins=[
+{id:1,name:"Czerwony",color:"red",hatColor:"red",price:0},
+{id:2,name:"Zielony",color:"green",hatColor:"green",price:40},
+{id:3,name:"Żółty",color:"yellow",hatColor:"yellow",price:200}
+];
+let ownedSkins=[1]; let currentSkin={id:1,color:'red',hatColor:'red'};
+
+// Statystyki
+let stats = {totalDeaths:0,totalPoints:0,totalLivesLost:0};
+const savedStats = JSON.parse(localStorage.getItem('platformowkaStats'));
+if(savedStats){stats=savedStats;}
+function saveStats(){localStorage.setItem('platformowkaStats',JSON.stringify(stats));}
+function addPoints(p){score+=p; stats.totalPoints+=p; saveStats();}
+function onDeath(){
+  stats.totalDeaths++;
+  stats.totalLivesLost++;
+  if(lives>0){lives--; resetPlayer();}
+  else{score=0; resetPlayer();}
+  saveStats();
+  updateHUD();
+}
+function renderStats(){statsContent.innerHTML = `
+<p>Aktualne lives: ${lives}</p>
+<p>Łącznie przegranych żyć: ${stats.totalLivesLost}</p>
+<p>Łącznie zgonów: ${stats.totalDeaths}</p>
+<p>Łącznie zdobytych punktów: ${stats.totalPoints}</p>
+<p>Coins: ${Math.floor(stats.totalPoints/10)}</p>
+`;}
+
+// HUD
+function updateHUD(){
+    document.getElementById('score').innerText="Punkty: "+score;
+    document.getElementById('coins').innerText="Coins: "+Math.floor(score/10);
+    document.getElementById('level').innerText="Level: "+currentLevel;
+    document.getElementById('lives').innerText="Życia: "+lives;
+    const timeSec=Math.floor((Date.now()-startTime)/1000);
+    document.getElementById('time').innerText="Czas: "+timeSec+"s";
+}
+
+// Poziomy
+function generateLevel(levelNum){
+  const platforms=[], spikes=[], coinsArr=[], moving=[];
+  const lvlWidth=8000; const lvlHeight=baseHeight;
+  platforms.push({x:0,y:lvlHeight-50,width:lvlWidth,height:50});
+  const difficulty=0.2+levelNum*0.03;
+  const holeChance=levelNum>=2?0.15+levelNum*0.01:0.05;
+  for(let i=150;i<lvlWidth;i+=300){
+    if(Math.random()<holeChance) continue;
+    const h=Math.random()*30;
+    platforms.push({x:i,y:lvlHeight-100-h,width:80,height:10});
+    if(Math.random()<0.3) coinsArr.push({x:i+20,y:lvlHeight-110-h,collected:false,size:15});
+    if(Math.random()<difficulty*2) spikes.push({x:i+25,y:lvlHeight-65,width:15,height:10});
+    if(Math.random()<difficulty) moving.push({x:i+35,y:lvlHeight-85,width:20,height:20,dx:2,alive:true});
+  }
+  return {platforms,spikes,coins:coinsArr,moving,width:lvlWidth};
+}
+const MAX_LEVEL=50; const levels=[]; for(let i=0;i<MAX_LEVEL;i++) levels.push(generateLevel(i+1));
+function resetPlayer(){player.dx=0;player.dy=0;player.onGround=false;player.anim=0;player.x=player.spawnX; player.y=player.spawnY;}
+
+// Lives co 30s
+setInterval(()=>{if(lives<MAX_LIVES) lives++; updateHUD();},30000);
+
+// Sterowanie
+document.querySelectorAll('input[name="controlType"]').forEach(radio=>{
+    radio.addEventListener('change', ()=>{
+        controlType = radio.value;
+        if(controlType==="phone" && enableTouchBtn.checked) touchControls.style.display="block";
+        else touchControls.style.display="none";
+    });
+});
+enableTouchBtn.addEventListener('change', ()=>{
+    if(enableTouchBtn.checked && controlType==="phone") touchControls.style.display="block";
+    else touchControls.style.display="none";
+});
+document.addEventListener('keydown', e=>{if(controlType!=="computer")return;if(e.code==='KeyA') keys.left=true;if(e.code==='KeyD') keys.right=true;if(e.code==='Space') keys.up=true;});
+document.addEventListener('keyup', e=>{if(controlType!=="computer")return;if(e.code==='KeyA') keys.left=false;if(e.code==='KeyD') keys.right=false;if(e.code==='Space') keys.up=false;});
+document.getElementById('leftBtn').addEventListener('touchstart', ()=>keys.left=true);
+document.getElementById('leftBtn').addEventListener('touchend', ()=>keys.left=false);
+document.getElementById('rightBtn').addEventListener('touchstart', ()=>keys.right=true);
+document.getElementById('rightBtn').addEventListener('touchend', ()=>keys.right=false);
+document.getElementById('jumpBtn').addEventListener('touchstart', ()=>keys.up=true);
+document.getElementById('jumpBtn').addEventListener('touchend', ()=>keys.up=false);
+
+// Wybór poziomu tylko odblokowane
+function showLevelButtons() {
+  levelButtonsDiv.innerHTML = '';
+  for (let i = 1; i <= MAX_LEVEL; i++) {
+    const btn = document.createElement('button');
+    btn.innerText = "Level " + i;
+    if(i > maxUnlockedLevel) btn.classList.add('disabled');
+    else btn.onclick = () => {
+      currentLevel=i; score=0; resetPlayer(); levelSelect.style.display='none'; gameStarted=true; startTime=Date.now();
+    };
+    levelButtonsDiv.appendChild(btn);
+  }
+}
+showLevelButtons();
+
+// Sklep i skiny
+function renderShop(){
+  skinShopWrapper.innerHTML="<h3>Sklep ze skinami</h3>";
+  availableSkins.forEach(skin=>{
+    const div=document.createElement("div");
+    div.style.display="inline-block"; div.style.margin="10px"; div.style.textAlign="center";
+    const preview=document.createElement("div"); preview.className="skinPreview"; preview.style.background=skin.color;
+    const price=document.createElement("div"); price.className="skinPrice";
+    if(ownedSkins.includes(skin.id)) price.innerText="Kupione";
+    else price.innerText = skin.price === 0 ? "Darmowy" : skin.price + " 🪙";
+    preview.onclick=()=>{
+      if(ownedSkins.includes(skin.id)){currentSkin=skin; saveStats(); updateHUD();}
+      else if(Math.floor(score/10) >= skin.price){score -= skin.price*10; ownedSkins.push(skin.id); currentSkin=skin; saveStats(); updateHUD(); renderShop();}
+      else alert("Za mało monet!");
+    };
+    div.appendChild(preview); div.appendChild(price);
+    skinShopWrapper.appendChild(div);
+  });
+}
+toggleShopBtn.onclick=()=>{ renderShop(); skinShopWrapper.style.display="block"; chooseSkinWrapper.style.display="none"; backButton.style.display="inline-block"; };
+
+// Wybór skinów
+function renderOwnedSkins(){
+  ownedSkinsDiv.innerHTML="";
+  ownedSkins.forEach(id=>{
+    const skin=availableSkins.find(s=>s.id===id);
+    if(!skin) return;
+    const div=document.createElement("div");
+    div.className="skinPreview";
+    div.style.background=skin.color;
+    div.onclick=()=>{currentSkin=skin; saveStats(); updateHUD();}
+    ownedSkinsDiv.appendChild(div);
+  });
+}
+chooseSkinBtn.onclick=()=>{ renderOwnedSkins(); chooseSkinWrapper.style.display="block"; skinShopWrapper.style.display="none"; backButton.style.display="inline-block"; };
+backButton.onclick=()=>{ skinShopWrapper.style.display="none"; chooseSkinWrapper.style.display="none"; settingsWrapper.style.display="none"; statsWrapper.style.display="none"; backButton.style.display="none"; };
+
+// Statystyki i ustawienia
+settingsBtn.onclick=()=>{settingsWrapper.style.display="block"; backButton.style.display="inline-block";}
+statsBtn.onclick=()=>{renderStats(); statsWrapper.style.display="block"; backButton.style.display="inline-block";}
+
+// Reset statystyk
+document.getElementById('resetStatsBtn').onclick=()=>{
+  stats={totalDeaths:0,totalPoints:0,totalLivesLost:0};
+  score=0;
+  updateHUD();
+  saveStats();
+}
+
+// Pętla gry
+function update() {
+  if(!gameStarted) return;
+  player.dx = 0;
+  if(keys.left) player.dx = -speed;
+  if(keys.right) player.dx = speed;
+  player.x += player.dx;
+  if(keys.up && player.onGround){ player.dy = jumpPower; player.onGround = false; }
+  player.dy += gravity;
+  player.y += player.dy;
+  player.onGround = false;
+
+  const lvl = levels[currentLevel-1];
+  for(let p of lvl.platforms){
+    if(player.x + player.width > p.x && player.x < p.x + p.width &&
+       player.y + player.height > p.y && player.y + player.height < p.y + p.height &&
+       player.dy >= 0){
+         player.y = p.y - player.height; player.dy = 0; player.onGround = true;
+    }
+  }
+
+  lvl.coins.forEach(c=>{
+    if(!c.collected && player.x + player.width > c.x && player.x < c.x + c.size &&
+       player.y + player.height > c.y && player.y < c.y + c.size){
+         c.collected = true; addPoints(1);
+    }
+  });
+
+  let dead=false;
+  lvl.spikes.forEach(s=>{
+    if(player.x + player.width > s.x && player.x < s.x + s.width &&
+       player.y + player.height > s.y && player.y < s.y + s.height) dead=true;
+  });
+  lvl.moving.forEach(m=>{
+    m.x += m.dx;
+    if(m.x < 0 || m.x > lvl.width - m.width) m.dx *= -1;
+    if(player.x + player.width > m.x && player.x < m.x + m.width &&
+       player.y + player.height > m.y && player.y < m.y + m.height) dead=true;
+  });
+  if(dead){if(lives<1) score=0; onDeath();}
+  if(player.y>baseHeight+500) resetPlayer();
+  updateHUD();
+}
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const lvl = levels[currentLevel-1];
+  const scale = Math.min(canvas.width/baseWidth, canvas.height/baseHeight);
+  let offsetX = player.x - baseWidth/4; if(offsetX<0) offsetX=0; if(offsetX>lvl.width-baseWidth) offsetX=lvl.width-baseWidth;
+  ctx.save(); ctx.scale(scale,scale); ctx.translate(-offsetX,0);
+  ctx.fillStyle="green"; lvl.platforms.forEach(p=>ctx.fillRect(p.x,p.y,p.width,p.height));
+  ctx.fillStyle="gold"; lvl.coins.forEach(c=>{if(!c.collected) ctx.fillRect(c.x,c.y,c.size,c.size);});
+  ctx.fillStyle="purple"; lvl.spikes.forEach(s=>ctx.fillRect(s.x,s.y,s.width,s.height));
+  ctx.fillStyle="black"; lvl.moving.forEach(m=>ctx.fillRect(m.x,m.y,m.width,m.height));
+  ctx.fillStyle=currentSkin.color; ctx.fillRect(player.x, player.y+Math.sin(player.anim)*2, player.width, player.height);
+  ctx.fillStyle=currentSkin.hatColor; ctx.fillRect(player.x, player.y+Math.sin(player.anim)*2, player.width,5);
+  player.anim+=0.1;
+  ctx.restore();
+}
+
+function loop(){update(); draw(); requestAnimationFrame(loop);}
+requestAnimationFrame(loop);
+
+});
+</script>
+</body>
+</html>
